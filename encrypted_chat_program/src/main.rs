@@ -1,6 +1,11 @@
 use tokio::net::TcpListener; // Import TcpListener for creating a TCP server.
 use tokio::io::{AsyncReadExt, AsyncWriteExt}; // Import necessary I/O traits for async read/write operations.
 
+pub mod messaging;
+
+
+const AES_KEY: &[u8; 32] = b"anexampleverysecurekey32bytes!!!";
+
 #[tokio::main] // Marks the main function as the entry point for the Tokio runtime.
 async fn main() -> std::io::Result<()> { // Defines the asynchronous main function, returning a Result for I/O operations.
     // Bind the TcpListener to the specified address and port, awaiting the operation.
@@ -14,7 +19,10 @@ async fn main() -> std::io::Result<()> { // Defines the asynchronous main functi
 
         // Spawn a new asynchronous task for each client connection.
         tokio::spawn(async move { // `async move` ensures the socket and address are moved into the new task.
+
+            // This creates a buffer: an array with space for 1,024 elements, where each element is a byte.
             let mut buffer = [0u8; 1024]; // Create a buffer to read incoming data from the client.
+            
             loop { // Loop to continuously read data from the client.
                 // Read data from the socket into the buffer.
                 let n = match socket.read(&mut buffer).await { // Await the read operation.
