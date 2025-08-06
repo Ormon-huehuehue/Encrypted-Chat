@@ -134,6 +134,7 @@ dependencies = [
 name = "encrypted_chat_program"
 version = "0.1.0"
 dependencies = [
+ "aead",
  "aes-gcm",
  "rand",
  "serde",

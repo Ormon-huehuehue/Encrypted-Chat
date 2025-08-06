@@ -1,4 +1,4 @@
-use aes_gcm::{Aes256Gcm, Nonce}; 
+use aes_gcm::{Aes256Gcm, Key, Nonce}; 
 use aes_gcm::aead::{Aead, KeyInit}; // Import Aead (Authenticated Encryption with Associated Data) trait and KeyInit trait for cipher initialization.
 use rand::Rng;
 

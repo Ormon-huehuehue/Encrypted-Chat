@@ -31,9 +31,35 @@ async fn main() -> std::io::Result<()> { // Defines the asynchronous main functi
                     Err(_) => break, // If an error occurs during read, break the loop.
                 };
 
-                // Echo received data back to the client (current functionality).
-                if socket.write_all(&buffer[0..n]).await.is_err() { // Write the received bytes back to the client.
-                    break; // If an error occurs during write, break the loop.
+                // Extract nonce (first 12 bytes) and ciphertext.
+                if n < 12 {
+                    eprintln!("Received data too short to contain a nonce.");
+                    break;
+                }
+                let mut received_nonce = [0u8; 12];
+                received_nonce.copy_from_slice(&buffer[0..12]);
+                let received_ciphertext = &buffer[12..n];
+
+                // Decrypt the message.
+                let decrypted_msg = messaging::decrypt_message(received_ciphertext, received_nonce, AES_KEY);
+                let decrypted_msg_str = String::from_utf8_lossy(&decrypted_msg);
+                println!("Decrypted message from {}: {}", addr, decrypted_msg_str);
+
+                // Prepare a response message.
+                let response_msg = format!("Server received: {}", decrypted_msg_str);
+                
+                // Encrypt the response.
+                let (encrypted_response, response_nonce) = messaging::encrypt_message(response_msg.as_bytes(), AES_KEY);
+
+                // Combine nonce and ciphertext for sending.
+                let mut data_to_send = Vec::with_capacity(response_nonce.len() + encrypted_response.len());
+                data_to_send.extend_from_slice(&response_nonce);
+                data_to_send.extend_from_slice(&encrypted_response);
+
+                // Send the encrypted response back to the client.
+                if socket.write_all(&data_to_send).await.is_err() {
+                    eprintln!("Error writing to socket: {}", addr);
+                    break;
                 }
             }
         });
