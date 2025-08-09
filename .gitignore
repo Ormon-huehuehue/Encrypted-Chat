@@ -1,2 +1,5 @@
 /client/target
 /encrypted_chat_program/target
+
+client/target
+encrypted_chat_program/target
