@@ -1,58 +1,69 @@
-use tokio::net::TcpStream; // Import TcpStream for establishing TCP connections.
-use tokio::io::{self, AsyncWriteExt, AsyncReadExt, AsyncBufReadExt}; // Import necessary I/O traits for async operations.
+use tokio::net::TcpStream;
+use tokio::io::{self, AsyncWriteExt, AsyncReadExt, AsyncBufReadExt};
 
 pub mod messaging;
 
 const AES_KEY: &[u8; 32] = b"anexampleverysecurekey32bytes!!!";
 
-#[tokio::main] // Marks the main function as the entry point for the Tokio runtime.
-async fn main() -> io::Result<()> { // Defines the asynchronous main function, returning a Result for I/O operations.
-    // Connect to the server running on localhost at port 8080.
-    let mut stream = TcpStream::connect("127.0.0.1:8080").await?;
-    println!("Connected to server. Type your message:"); // Inform the user that the connection is established.
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let stream = TcpStream::connect("127.0.0.1:8080").await?;
+    println!("Connected to server. Type your message:");
 
+    let (mut reader, mut writer) = io::split(stream);
 
-    loop{
-        let mut buf = String::new(); // Create a new mutable string to store user input.
-        // Create a buffered reader for standard input to efficiently read lines.
-        let mut stdin = io::BufReader::new(io::stdin());
-        // Read a line from standard input into the buffer, awaiting the operation.
+    // Task for receiving messages
+    tokio::spawn(async move {
+        let mut buffer = [0u8; 1024];
+        loop {
+            let n = match reader.read(&mut buffer).await {
+                Ok(n) if n == 0 => {
+                    println!("Server disconnected.");
+                    break;
+                },
+                Ok(n) => n,
+                Err(e) => {
+                    eprintln!("Error reading from socket: {}", e);
+                    break;
+                }
+            };
+
+            if n < 12 {
+                eprintln!("Received data too short to contain a nonce.");
+                continue;
+            }
+            let mut received_nonce = [0u8; 12];
+            received_nonce.copy_from_slice(&buffer[0..12]);
+            let received_ciphertext = &buffer[12..n];
+
+            let decrypted_msg = messaging::decrypt_message(received_ciphertext, received_nonce, AES_KEY);
+            let decrypted_msg_str = String::from_utf8_lossy(&decrypted_msg);
+            println!("Received: {}", decrypted_msg_str);
+        }
+    });
+
+    // Main loop for sending messages
+    let mut stdin = io::BufReader::new(io::stdin());
+    loop {
+        let mut buf = String::new();
         stdin.read_line(&mut buf).await?;
 
-        // Encrypt the message.
-        let (encrypted_msg, nonce) = messaging::encrypt_message(buf.trim().as_bytes(), AES_KEY);
+        let trimmed_msg = buf.trim();
+        if trimmed_msg.is_empty() {
+            continue;
+        }
 
-        // Combine nonce and ciphertext for sending.
+        let (encrypted_msg, nonce) = messaging::encrypt_message(trimmed_msg.as_bytes(), AES_KEY);
+
         let mut data_to_send = Vec::with_capacity(nonce.len() + encrypted_msg.len());
         data_to_send.extend_from_slice(&nonce);
         data_to_send.extend_from_slice(&encrypted_msg);
 
-        // Write the encrypted data to the TCP stream, awaiting the operation.
-        stream.write_all(&data_to_send).await?;
-
-        let mut resp = [0u8; 1024]; // Create a mutable byte array to store the server's response.
-        // Read data from the TCP stream into the response buffer, awaiting the operation.
-        let n = stream.read(&mut resp).await?;
-
-        // Extract nonce (first 12 bytes) and ciphertext from the response.
-        if n < 12 {
-            eprintln!("Received data too short to contain a nonce.");
-            return Ok(());
-        }
-        let mut received_nonce = [0u8; 12];
-        received_nonce.copy_from_slice(&resp[0..12]);
-        let received_ciphertext = &resp[12..n];
-
-        // Decrypt the server's reply.
-        let decrypted_reply = messaging::decrypt_message(received_ciphertext, received_nonce, AES_KEY);
-        // Print the server's decrypted reply, converting the received bytes to a lossy UTF-8 string.
-        let decrypted_reply_string = String::from_utf8_lossy(&decrypted_reply);
-        println!("Server replied: {}", decrypted_reply_string);
-
-        if decrypted_reply_string == "-1" {
+        if writer.write_all(&data_to_send).await.is_err() {
+            eprintln!("Error writing to socket.");
             break;
         }
     }
 
-    Ok(()) // Return Ok to indicate successful execution.
+    Ok(())
 }
