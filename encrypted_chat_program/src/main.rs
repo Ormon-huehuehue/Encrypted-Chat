@@ -10,8 +10,11 @@ use sha2::{Sha256, Digest};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:8001").await?;
-    println!("WebSocket server is running on ws://ip:8001");
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8001".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+
+    let listener = TcpListener::bind(&addr).await?;
+    println!("WebSocket server is running on ws://0.0.0.0:{}", port);
 
     // Store waiting clients by their shared hash
     let waiting_clients: Arc<Mutex<HashMap<String, WebSocketStream<tokio::net::TcpStream>>>> = Arc::new(Mutex::new(HashMap::new()));
